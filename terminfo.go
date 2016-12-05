@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"image/color"
 	"io"
 	"os"
 	"os/user"
@@ -257,7 +258,7 @@ func (ti *TermInfo) pad(n int, mandatory bool) {
 			return
 		}
 		if tio, err := termios.GetAttr(ti.tty.Fd()); err == nil {
-			ospeed = tio.GetSpeed()
+			_, ospeed = tio.GetSpeed()
 		}
 		if ospeed < minBaudRate {
 			return
@@ -269,7 +270,7 @@ func (ti *TermInfo) pad(n int, mandatory bool) {
 	}
 	if ospeed < 0 {
 		if tio, err := termios.GetAttr(ti.tty.Fd()); err == nil {
-			ospeed = tio.GetSpeed()
+			_, ospeed = tio.GetSpeed()
 		}
 		if ospeed < 0 {
 			goto sleep
@@ -288,6 +289,78 @@ func (ti *TermInfo) pad(n int, mandatory bool) {
 	return
 sleep:
 	time.Sleep(time.Duration(n) * time.Millisecond)
+}
+
+func (ti *TermInfo) MustUnescape(idx StringIndex, args ...interface{}) string {
+	buf, err := Unescape(ti.Strings[idx], args...)
+	if err != nil {
+		panic(err)
+	}
+	return string(buf)
+}
+
+var (
+	Black     = color.RGBA{0, 0, 0, 255}
+	Red       = color.RGBA{205, 0, 0, 255}
+	Green     = color.RGBA{0, 205, 0, 255}
+	Orange    = color.RGBA{205, 205, 0, 255}
+	Blue      = color.RGBA{0, 0, 238, 255}
+	Magenta   = color.RGBA{205, 0, 205, 255}
+	Cyan      = color.RGBA{0, 205, 205, 255}
+	LightGrey = color.RGBA{229, 229, 229, 255}
+
+	DarkGrey     = color.RGBA{127, 127, 127, 255}
+	LightRed     = color.RGBA{255, 0, 0, 255}
+	LightGreen   = color.RGBA{0, 255, 0, 255}
+	Yellow       = color.RGBA{255, 255, 0, 255}
+	LightBlue    = color.RGBA{92, 92, 255, 255}
+	LightMagenta = color.RGBA{255, 0, 255, 255}
+	LightCyan    = color.RGBA{0, 255, 255, 255}
+	White        = color.RGBA{255, 255, 255, 255}
+)
+
+var xterm = color.Palette{
+	// dark colors:
+	Black,
+	Red,
+	Green,
+	Orange,
+	Blue,
+	Magenta,
+	Cyan,
+	LightGrey,
+	// light colors:
+	DarkGrey,
+	LightRed,
+	LightGreen,
+	Yellow,
+	LightBlue,
+	LightMagenta,
+	LightCyan,
+	White,
+}
+
+func (ti *TermInfo) Color(fg, bg color.Color) string {
+	if int(MaxColors) >= len(ti.Numbers) {
+		return ""
+	}
+	cols := ti.Numbers[MaxColors]
+	if cols <= 0 {
+		return ""
+	}
+	if cols < 88 {
+		fgi := xterm.Index(fg)
+		bgi := xterm.Index(bg)
+		return ti.MustUnescape(SetAForeground, fgi) + ti.MustUnescape(SetABackground, bgi)
+	}
+	// assume it supports ISO-8613-3
+	fR, fG, fB, fA := fg.RGBA()
+	bR, bG, bB, bA := bg.RGBA()
+	fQ := fA / 255
+	bQ := bA / 255
+	return fmt.Sprintf("\033[38;2;%d;%d;%d;48;2;%d;%d;%dm",
+		fR/fQ, fG/fQ, fB/fQ,
+		bR/bQ, bG/bQ, bB/bQ)
 }
 
 func (ti *TermInfo) Puts(idx StringIndex, affcnt int, args ...interface{}) error {
@@ -494,17 +567,22 @@ func searchPath() []string {
 	return path
 }
 
-func Load() (ti *TermInfo, err error) {
+func LoadF(tty *os.File) (ti *TermInfo, err error) {
 	for _, p := range searchPath() {
 		if ti, err = load1(p); err == nil {
-			ti.tty, err = os.OpenFile("/dev/tty", os.O_WRONLY, 0)
-			if err != nil {
-				ti.tty = os.Stdout
-				err = nil
-			}
+			ti.tty = tty
 			break
 		}
 	}
 
 	return ti, err
+}
+
+func Load() (ti *TermInfo, err error) {
+	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		tty = os.Stdout
+	}
+
+	return LoadF(tty)
 }
