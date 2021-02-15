@@ -234,11 +234,12 @@ func Unescape(tpl []byte, args ...interface{}) ([]byte, error) {
 }
 
 type TermInfo struct {
-	Names    []string
-	Booleans []bool
-	Numbers  []int16
-	Strings  map[StringIndex][]byte
-	tty      *os.File
+	Names      []string
+	Booleans   []bool
+	Numbers    []int16
+	BigNumbers []int32
+	Strings    map[StringIndex][]byte
+	tty        *os.File
 }
 
 var findPadIndexes = regexp.MustCompile(`\$<(\d+)(\*)?(/)?>`).FindAllSubmatchIndex
@@ -424,8 +425,14 @@ func load1(path string) (*TermInfo, error) {
 		return nil, &ErrBadThing{Thing: "header", Filename: filename, Err: err}
 	}
 
-	if header[0] != 0432 {
-		err := fmt.Errorf("expected 0432, got %#od", header[0])
+	isBig := false
+	switch header[0] {
+	case 0432:
+		// ok
+	case 01036:
+		isBig = true
+	default:
+		err := fmt.Errorf("expected 0432 or 01036, got %#o", header[0])
 		return nil, &ErrBadThing{Thing: "magic", Filename: filename, Err: err}
 	}
 
@@ -465,9 +472,16 @@ func load1(path string) (*TermInfo, error) {
 	// a short word boundary.”
 	tif.Seek(int64((header[1]+header[2])&1), 1)
 
-	ti.Numbers = make([]int16, header[3])
-	if err := binary.Read(tif, binary.LittleEndian, ti.Numbers); err != nil {
-		return nil, &ErrBadThing{Thing: "numbers section", Filename: filename, Err: err}
+	if isBig {
+		ti.BigNumbers = make([]int32, header[3])
+		if err := binary.Read(tif, binary.LittleEndian, ti.BigNumbers); err != nil {
+			return nil, &ErrBadThing{Thing: "numbers section", Filename: filename, Err: err}
+		}
+	} else {
+		ti.Numbers = make([]int16, header[3])
+		if err := binary.Read(tif, binary.LittleEndian, ti.Numbers); err != nil {
+			return nil, &ErrBadThing{Thing: "numbers section", Filename: filename, Err: err}
+		}
 	}
 
 	strIndexes := make([]int16, header[4])
