@@ -347,7 +347,7 @@ var xterm = color.Palette{
 }
 
 func (ti *TermInfo) Color(fg, bg color.Color) string {
-	if int(MaxColors) >= len(ti.Numbers) {
+	if int(MaxColors) >= len(ti.Numbers) && int(MaxColors) > len(ti.BigNumbers) {
 		return ""
 	}
 	var cols int32
