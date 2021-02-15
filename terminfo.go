@@ -254,7 +254,12 @@ func (ti *TermInfo) pad(n int, mandatory bool) {
 		if ti.Booleans[XonXoff] {
 			return
 		}
-		minBaudRate := int(ti.Numbers[PaddingBaudRate])
+		var minBaudRate int
+		if len(ti.BigNumbers) > 0 {
+			minBaudRate = int(ti.BigNumbers[PaddingBaudRate])
+		} else {
+			minBaudRate = int(ti.Numbers[PaddingBaudRate])
+		}
 		if minBaudRate < 0 {
 			return
 		}
@@ -345,7 +350,12 @@ func (ti *TermInfo) Color(fg, bg color.Color) string {
 	if int(MaxColors) >= len(ti.Numbers) {
 		return ""
 	}
-	cols := ti.Numbers[MaxColors]
+	var cols int32
+	if len(ti.BigNumbers) > 0 {
+		cols = ti.BigNumbers[MaxColors]
+	} else {
+		cols = int32(ti.Numbers[MaxColors])
+	}
 	if cols <= 0 {
 		return ""
 	}
